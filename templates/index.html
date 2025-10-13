@@ -1,0 +1,109 @@
+
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8"/>
+  <title>Label & Invoice Processor</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1"/>
+  <style>
+    body { font-family: Inter, system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif; margin: 24px; }
+    table { border-collapse: collapse; width: 100%; margin-top: 16px; }
+    th, td { border: 1px solid #ddd; padding: 8px; font-size: 14px; }
+    th { background: #f4f6f8; text-align: left; }
+    .ok { color: #167312; font-weight: 600; }
+    .bad { color: #a11212; font-weight: 600; }
+    .pill { padding: 2px 8px; border-radius: 12px; font-size: 12px; }
+    .pending { background:#fff7e6; color:#ad6800; }
+    .ready { background:#e6fffb; color:#006d75; }
+    .error { background:#fff1f0; color:#a8071a; }
+    .row { display:flex; gap:12px; align-items:center; }
+  </style>
+</head>
+<body>
+  <h2>Upload combined PDF (Label + Invoice per page)</h2>
+  <form id="upform">
+    <input type="file" name="file" accept="application/pdf" required />
+    <button type="submit">Upload & Parse</button>
+  </form>
+  <div id="msg"></div>
+
+  <h3>Orders</h3>
+  <div class="row">
+    <input id="scan" placeholder="Scan code e.g., AT0001-c0001" style="width:260px"/>
+    <button id="scanBtn">Add Scan</button>
+  </div>
+
+  <table id="grid">
+    <thead>
+      <tr>
+        <th>Order ID</th>
+        <th>Invoice #</th>
+        <th>Customer</th>
+        <th>SKU</th>
+        <th>Qty</th>
+        <th>Product IDs (scanned)</th>
+        <th>Status</th>
+        <th>Output</th>
+      </tr>
+    </thead>
+    <tbody></tbody>
+  </table>
+
+<script>
+async function refreshRows(){
+  const res = await fetch('/orders');
+  const data = await res.json();
+  const tbody = document.querySelector("#grid tbody");
+  tbody.innerHTML = "";
+  if (!data.ok) return;
+
+  data.rows.forEach(r => {
+    const tr = document.createElement("tr");
+    tr.innerHTML = `
+      <td>${r.order_id ?? ""}</td>
+      <td>${r.invoice_number ?? ""}</td>
+      <td>${r.customer_name ?? ""}</td>
+      <td>${r.sku}</td>
+      <td>${r.qty}</td>
+      <td>${(r.product_ids||[]).join(", ")}</td>
+      <td><span class="pill ${r.status}">${r.status}</span></td>
+      <td>${
+        r.status === "ready" ? `<a href="/download/${r.order_id}">Download PDF</a>` : ""
+      }</td>
+    `;
+    tbody.appendChild(tr);
+  });
+}
+
+document.getElementById("upform").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const fd = new FormData(e.target);
+  const res = await fetch("/upload", { method: "POST", body: fd });
+  const data = await res.json();
+  const msg = document.getElementById("msg");
+  if (data.ok){
+    msg.innerHTML = `<span class="ok">Parsed ${data.orders.length} order(s).</span>`;
+  } else {
+    msg.innerHTML = `<span class="bad">${data.error || "Failed"}</span>`;
+  }
+  refreshRows();
+});
+
+document.getElementById("scanBtn").addEventListener("click", async () => {
+  const val = document.getElementById("scan").value.trim();
+  if (!val) return;
+  const res = await fetch("/scan", {method:"POST", headers:{"Content-Type":"application/json"}, body: JSON.stringify({code:val})});
+  const data = await res.json();
+  if (data.ok){
+    alert(data.completed_order ? ("Order ready: " + data.completed_order) : "Scan recorded");
+  } else {
+    alert(data.error || "Scan failed");
+  }
+  document.getElementById("scan").value = "";
+  refreshRows();
+});
+
+refreshRows();
+</script>
+</body>
+</html>
