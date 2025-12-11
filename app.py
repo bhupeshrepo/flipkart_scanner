@@ -120,63 +120,83 @@ SCAN_PATTERN = re.compile(r"^(AT\d{4})[-_:]?([A-Za-z0-9]{5})$", re.IGNORECASE)
 @app.route("/scan", methods=["POST"])
 def scan():
     """
-    3) User scans barcode like 'AT0001-c0001' -> fill product_id into first matching row
-       for the first *pending* order that still needs that SKU, FIFO.
+    3) User scans barcode like 'AT0001-a001' or 'AT0001-A0001' -> normalized to AT0001-A0001
+    Handles invalid formats gracefully and logs detailed debug info.
     """
-    payload = request.get_json(force=True)
-    code = payload.get("code","").strip()
-    m = SCAN_PATTERN.match(code)
-    if not m:
-        return jsonify({"ok": False, "error": "Invalid code format. Expect AT0001-c0001"}), 400
+    try:
+        payload = request.get_json(force=True)
+        code_raw = (payload.get("code") or "").strip().upper()
 
-    sku, product_id = m.group(1), m.group(2)
-    db = _load_db()
+        if not code_raw:
+            print("[SCAN ERROR] Empty code received.")
+            return jsonify({"ok": False, "error": "No barcode provided"}), 400
 
-    updated = False
-    completed_order_id = None
-    for o in db["orders"]:
-        if o["status"] != "pending":
-            continue
-        # find sku line
-        for it in o["items"]:
-            if it["sku"] == sku:
-                # if already complete for this item?
-                if len(it["product_ids"]) >= int(it["qty"]):
-                    continue
-                # append if not duplicate
-                if product_id not in it["product_ids"]:
-                    it["product_ids"].append(product_id)
-                    updated = True
+        # ✅ Accepts A001 or A0001 variants
+        SCAN_PATTERN = re.compile(r"^(AT\d{4})[-_:]?([A-Z])(\d{1,4})$", re.IGNORECASE)
+        m = SCAN_PATTERN.match(code_raw)
+
+        if not m:
+            print(f"[SCAN ERROR] Invalid format: {code_raw}")
+            return jsonify({
+                "ok": False,
+                "error": "Invalid code format. Expected AT0001-A001 or AT0001-A0001"
+            }), 400
+
+        sku, letter, digits = m.groups()
+        product_id = f"{letter}{int(digits):04d}"  # Normalize e.g., A001 -> A0001
+        sku = sku.upper()
+
+        print(f"[SCAN] Parsed SKU={sku}, Product ID={product_id}")
+
+        db = _load_db()
+        updated = False
+        completed_order_id = None
+
+        for o in db["orders"]:
+            if o["status"] != "pending":
+                continue
+
+            for it in o["items"]:
+                if it["sku"].upper() == sku:
+                    # Skip if already full
+                    if len(it["product_ids"]) >= int(it["qty"]):
+                        continue
+                    if product_id not in it["product_ids"]:
+                        it["product_ids"].append(product_id)
+                        updated = True
+                        print(f"[SCAN OK] Added {product_id} to {sku} for order {o['order_id']}")
+                    break
+
+            if updated:
+                all_ok = all(len(it["product_ids"]) == int(it["qty"]) for it in o["items"])
+                if all_ok:
+                    out_pdf = os.path.join(STORE_DIR, f"{o['order_id']}.pdf")
+                    try:
+                        slice_and_build_order_pdf(
+                            source_pdf=o["pdf_path"],
+                            page_index=o["page_index"],
+                            out_pdf=out_pdf
+                        )
+                        o["status"] = "ready"
+                        o["out_pdf"] = out_pdf
+                        completed_order_id = o["order_id"]
+                        print(f"[ORDER READY] {o['order_id']} PDF generated.")
+                    except Exception as e:
+                        o["status"] = "error"
+                        o["error"] = str(e)
+                        print(f"[PDF ERROR] {o['order_id']} -> {e}")
                 break
 
-        # check if the whole order is complete now
         if updated:
-            all_ok = True
-            for it in o["items"]:
-                if len(it["product_ids"]) != int(it["qty"]):
-                    all_ok = False
-                    break
-            if all_ok:
-                # 4) when all SKUs scanned -> slice + build new 3-page PDF (label + invoice x2) -> status ready
-                out_pdf = os.path.join(STORE_DIR, f"{o['order_id']}.pdf")
-                try:
-                    slice_and_build_order_pdf(
-                        source_pdf=o["pdf_path"],
-                        page_index=o["page_index"],
-                        out_pdf=out_pdf
-                    )
-                    o["status"] = "ready"
-                    o["out_pdf"] = out_pdf
-                    completed_order_id = o["order_id"]
-                except Exception as e:
-                    o["status"] = "error"
-                    o["error"] = str(e)
-            break
+            _save_db(db)
+        else:
+            print(f"[SCAN WARN] SKU {sku} not found or already completed.")
 
-    if updated:
-        _save_db(db)
+        return jsonify({"ok": updated, "completed_order": completed_order_id, "orders": db["orders"]})
 
-    return jsonify({"ok": updated, "completed_order": completed_order_id, "orders": db["orders"]})
+    except Exception as e:
+        print(f"[SCAN FATAL ERROR] {e}")
+        return jsonify({"ok": False, "error": f"Unexpected error: {e}"}), 500
 
 @app.route("/download/<order_id>", methods=["GET"])
 def download(order_id):

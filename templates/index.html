@@ -90,18 +90,33 @@ document.getElementById("upform").addEventListener("submit", async (e) => {
 });
 
 document.getElementById("scanBtn").addEventListener("click", async () => {
-  const val = document.getElementById("scan").value.trim();
+  const input = document.getElementById("scan");
+  let val = input.value.trim().toUpperCase(); // ✅ Auto-uppercase
   if (!val) return;
-  const res = await fetch("/scan", {method:"POST", headers:{"Content-Type":"application/json"}, body: JSON.stringify({code:val})});
-  const data = await res.json();
-  if (data.ok){
-    alert(data.completed_order ? ("Order ready: " + data.completed_order) : "Scan recorded");
-  } else {
-    alert(data.error || "Scan failed");
+
+  try {
+    const res = await fetch("/scan", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ code: val })
+    });
+    const data = await res.json();
+
+    if (data.ok) {
+      alert(data.completed_order ? ("✅ Order ready: " + data.completed_order) : "✅ Scan recorded");
+    } else {
+      console.error("[SCAN FAIL]", data.error);
+      alert("❌ " + (data.error || "Scan failed"));
+    }
+  } catch (err) {
+    console.error("[SCAN ERROR]", err);
+    alert("⚠️ Connection error — check server log");
   }
-  document.getElementById("scan").value = "";
+
+  input.value = "";
   refreshRows();
 });
+
 
 refreshRows();
 </script>
