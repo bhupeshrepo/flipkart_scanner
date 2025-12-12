@@ -1,37 +1,181 @@
-
 <!doctype html>
 <html>
 <head>
   <meta charset="utf-8"/>
-  <title>Label & Invoice Processor</title>
+  <title>Flipkart Processor</title>
   <meta name="viewport" content="width=device-width, initial-scale=1"/>
+
   <style>
-    body { font-family: Inter, system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif; margin: 24px; }
-    table { border-collapse: collapse; width: 100%; margin-top: 16px; }
-    th, td { border: 1px solid #ddd; padding: 8px; font-size: 14px; }
-    th { background: #f4f6f8; text-align: left; }
-    .ok { color: #167312; font-weight: 600; }
-    .bad { color: #a11212; font-weight: 600; }
-    .pill { padding: 2px 8px; border-radius: 12px; font-size: 12px; }
-    .pending { background:#fff7e6; color:#ad6800; }
-    .ready { background:#e6fffb; color:#006d75; }
-    .error { background:#fff1f0; color:#a8071a; }
-    .row { display:flex; gap:12px; align-items:center; }
+    body {
+      font-family: Inter, system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif;
+      margin: 24px;
+      background: #fafafa;
+      color: #111;
+    }
+
+    h2, h3 {
+      margin-bottom: 12px;
+    }
+
+    table {
+      border-collapse: collapse;
+      width: 100%;
+      margin-top: 16px;
+    }
+
+    th, td {
+      border: 1px solid #ddd;
+      padding: 8px;
+      font-size: 14px;
+    }
+
+    th {
+      background: #f4f6f8;
+      text-align: left;
+      font-weight: 600;
+    }
+
+    input[type="text"] {
+      padding: 6px 10px;
+      border: 1px solid #ccc;
+      border-radius: 4px;
+      font-size: 14px;
+    }
+
+    button {
+      padding: 6px 12px;
+      font-size: 14px;
+      cursor: pointer;
+      background: #0058ff;
+      border: none;
+      color: white;
+      border-radius: 4px;
+    }
+
+    button:hover {
+      background: #0044cc;
+    }
+
+    .row {
+      display: flex;
+      gap: 12px;
+      align-items: center;
+      margin-top: 8px;
+    }
+
+    .pill {
+      padding: 2px 8px;
+      border-radius: 12px;
+      font-size: 12px;
+      font-weight: 600;
+    }
+
+    .pending {
+      background: #fff7e6;
+      color: #ad6800;
+    }
+
+    .ready {
+      background: #e6fffb;
+      color: #006d75;
+    }
+
+    .error {
+      background: #fff1f0;
+      color: #a8071a;
+    }
+
+    /* ---------- MODAL STYLES ---------- */
+
+    .modal-backdrop {
+      position: fixed;
+      inset: 0;
+      background: rgba(0,0,0,0.35);
+      display: none;
+      align-items: center;
+      justify-content: center;
+      z-index: 999;
+    }
+
+    .modal {
+      background: #fff;
+      padding: 20px;
+      border-radius: 8px;
+      width: 380px;
+      max-width: 90%;
+      max-height: 70vh;
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+      box-shadow: 0 6px 18px rgba(0,0,0,0.18);
+    }
+
+    .modal h3 {
+      margin: 0;
+      font-size: 16px;
+    }
+
+    .modal-list {
+      border: 1px solid #ddd;
+      border-radius: 4px;
+      height: 240px;
+      overflow-y: auto;
+      padding: 4px;
+      background: #fafafa;
+    }
+
+    .modal-list-item {
+      padding: 6px 8px;
+      border-radius: 4px;
+      cursor: pointer;
+    }
+
+    .modal-list-item:hover {
+      background: #f0f0f0;
+    }
+
+    .modal-list-item.selected {
+      background: #e6fffb;
+      color: #006d75;
+      font-weight: 600;
+    }
+
+    .btn-secondary {
+      background: #777;
+    }
+
+    .btn-secondary:hover {
+      background: #555;
+    }
   </style>
 </head>
+
+
 <body>
-  <h2>Upload combined PDF (Label + Invoice per page)</h2>
+
+  <h2>atovio Flipkart Processor</h2>
+
   <form id="upform">
     <input type="file" name="file" accept="application/pdf" required />
     <button type="submit">Upload & Parse</button>
   </form>
-  <div id="msg"></div>
+
+  <div id="msg" style="margin-top:8px;font-weight:600;"></div>
 
   <h3>Orders</h3>
+
+<div class="row" style="justify-content: space-between; width:100%;">
+  
   <div class="row">
-    <input id="scan" placeholder="Scan code e.g., AT0001-c0001" style="width:260px"/>
+    <input id="scan" placeholder="Scan code e.g., AT0001-A0001" style="width:260px"/>
     <button id="scanBtn">Add Scan</button>
+    <button id="bulkBtn" style="background:#009688;">Bulk Print</button>
   </div>
+
+  <button id="clearBtn" style="background:#d9534f;">Clear Screen</button>
+
+</div>
+
 
   <table id="grid">
     <thead>
@@ -49,13 +193,41 @@
     <tbody></tbody>
   </table>
 
+
+  <!-- ------------ BULK PRINT MODAL ------------- -->
+
+  <div id="bulkBackdrop" class="modal-backdrop">
+    <div class="modal">
+      <h3>Select SKU for Bulk Print</h3>
+      <div class="modal-list" id="bulkSkuList"></div>
+
+      <div class="row" style="justify-content:flex-end; margin-top:12px;">
+        <button id="bulkCancel" class="btn-secondary">Cancel</button>
+        <button id="bulkConfirm">Print</button>
+      </div>
+    </div>
+  </div>
+
+
 <script>
+/* ----------------------------------------------------
+   GLOBAL CACHE FOR ORDER ROWS
+-----------------------------------------------------*/
+let allRowsCache = [];
+let bulkSelectedSku = null;
+
+
+/* ----------------------------------------------------
+   REFRESH TABLE FROM /orders
+-----------------------------------------------------*/
 async function refreshRows(){
   const res = await fetch('/orders');
   const data = await res.json();
   const tbody = document.querySelector("#grid tbody");
   tbody.innerHTML = "";
   if (!data.ok) return;
+
+  allRowsCache = data.rows || [];
 
   data.rows.forEach(r => {
     const tr = document.createElement("tr");
@@ -68,30 +240,63 @@ async function refreshRows(){
       <td>${(r.product_ids||[]).join(", ")}</td>
       <td><span class="pill ${r.status}">${r.status}</span></td>
       <td>${
-        r.status === "ready" ? `<a href="/download/${r.order_id}">Download PDF</a>` : ""
+        r.status === "ready" ? `<a href="/download/${r.order_id}" target="_blank">Download PDF</a>` : ""
       }</td>
     `;
     tbody.appendChild(tr);
   });
 }
 
+
+/* ----------------------------------------------------
+   FILE UPLOAD HANDLER
+-----------------------------------------------------*/
 document.getElementById("upform").addEventListener("submit", async (e) => {
   e.preventDefault();
   const fd = new FormData(e.target);
   const res = await fetch("/upload", { method: "POST", body: fd });
   const data = await res.json();
   const msg = document.getElementById("msg");
+
   if (data.ok){
-    msg.innerHTML = `<span class="ok">Parsed ${data.orders.length} order(s).</span>`;
+    msg.innerHTML = `<span style="color:#167312">Parsed ${data.orders.length} order(s).</span>`;
   } else {
-    msg.innerHTML = `<span class="bad">${data.error || "Failed"}</span>`;
+    msg.innerHTML = `<span style="color:#a11212">${data.error || "Failed"}</span>`;
   }
   refreshRows();
 });
 
+
+
+/* ----------------------------------------------------
+   clear all
+-----------------------------------------------------*/
+document.getElementById("clearBtn").addEventListener("click", async () => {
+  if (!confirm("Are you sure? This will delete all PDFs and clear the screen.")) return;
+
+  try {
+    const res = await fetch("/clear_all", { method: "POST" });
+    const data = await res.json();
+
+    if (data.ok) {
+      alert("Screen cleared and PDFs deleted.");
+      // Clear table UI
+      document.querySelector("#grid tbody").innerHTML = "";
+    } else {
+      alert("❌ Failed: " + (data.error || "Unknown error"));
+    }
+  } catch (e) {
+    alert("⚠️ Error contacting server");
+  }
+});
+
+
+/* ----------------------------------------------------
+   SCAN HANDLER
+-----------------------------------------------------*/
 document.getElementById("scanBtn").addEventListener("click", async () => {
   const input = document.getElementById("scan");
-  let val = input.value.trim().toUpperCase(); // ✅ Auto-uppercase
+  let val = input.value.trim().toUpperCase();
   if (!val) return;
 
   try {
@@ -105,11 +310,9 @@ document.getElementById("scanBtn").addEventListener("click", async () => {
     if (data.ok) {
       alert(data.completed_order ? ("✅ Order ready: " + data.completed_order) : "✅ Scan recorded");
     } else {
-      console.error("[SCAN FAIL]", data.error);
       alert("❌ " + (data.error || "Scan failed"));
     }
   } catch (err) {
-    console.error("[SCAN ERROR]", err);
     alert("⚠️ Connection error — check server log");
   }
 
@@ -118,7 +321,102 @@ document.getElementById("scanBtn").addEventListener("click", async () => {
 });
 
 
+/* ----------------------------------------------------
+   BULK PRINT MODAL OPEN
+-----------------------------------------------------*/
+function openBulkModal() {
+  const backdrop = document.getElementById("bulkBackdrop");
+  const listEl = document.getElementById("bulkSkuList");
+  listEl.innerHTML = "";
+  bulkSelectedSku = null;
+
+  // Build unique SKU list (from rows)
+  const skuMap = new Map(); // sku -> display_name
+  allRowsCache.forEach(r => {
+    if (!r.sku) return;
+    if (!skuMap.has(r.sku)) {
+      skuMap.set(r.sku, r.display_name || r.sku);
+    }
+  });
+
+  const entries = Array.from(skuMap.entries());
+  if (entries.length === 0) {
+    listEl.innerHTML = "<div style='padding:6px;'>No SKUs found.</div>";
+  } else {
+    entries.forEach(([sku, name]) => {
+      const item = document.createElement("div");
+      item.className = "modal-list-item";
+      item.dataset.sku = sku;
+      item.textContent = `${sku} — ${name}`;
+
+      item.addEventListener("click", () => {
+        bulkSelectedSku = sku;
+        document.querySelectorAll(".modal-list-item")
+          .forEach(el => el.classList.remove("selected"));
+        item.classList.add("selected");
+      });
+
+      listEl.appendChild(item);
+    });
+  }
+
+  backdrop.style.display = "flex";
+}
+
+
+/* ----------------------------------------------------
+   BULK PRINT MODAL CLOSE
+-----------------------------------------------------*/
+function closeBulkModal() {
+  document.getElementById("bulkBackdrop").style.display = "none";
+  bulkSelectedSku = null;
+}
+
+
+/* ----------------------------------------------------
+   BULK PRINT BUTTONS
+-----------------------------------------------------*/
+document.getElementById("bulkBtn").addEventListener("click", openBulkModal);
+
+document.getElementById("bulkCancel").addEventListener("click", closeBulkModal);
+
+document.getElementById("bulkConfirm").addEventListener("click", async () => {
+  if (!bulkSelectedSku) {
+    alert("Please select a SKU first.");
+    return;
+  }
+
+  try {
+    const res = await fetch("/bulk_print", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ sku: bulkSelectedSku })
+    });
+
+    const data = await res.json();
+    if (!data.ok) {
+      alert("❌ " + (data.error || "Bulk print failed"));
+    } else {
+      alert(`✅ Bulk PDF prepared for ${data.count} orders | SKU: ${data.sku}`);
+      if (data.bulk_pdf_url) {
+        window.open(data.bulk_pdf_url, "_blank");
+      }
+    }
+
+  } catch (e) {
+    alert("⚠️ Connection error during bulk print");
+  }
+
+  closeBulkModal();
+  refreshRows();
+});
+
+
+/* ----------------------------------------------------
+   INIT
+-----------------------------------------------------*/
 refreshRows();
 </script>
+
 </body>
 </html>

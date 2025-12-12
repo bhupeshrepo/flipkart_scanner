@@ -84,26 +84,35 @@ def _render_rotated_clip_to_fixed_page(src_doc: fitz.Document, page_index: int, 
     p.show_pdf_page(dest, src_doc, page_index, clip=clip_rect, rotate=rotation_deg, keep_proportion=True, overlay=True, oc=0)
     return out
 
-def slice_and_build_order_pdf(source_pdf: str, page_index: int, out_pdf: str):
+# processor.py
+
+def slice_and_build_order_pdf(source_pdf: str, page_index: int, out_pdf: str,
+                              labels: int = 1, invoices: int = 2):
     src = fitz.open(source_pdf)
     page = src.load_page(page_index)
     page_rect = page.rect
 
     label_clip, invoice_clip = _compute_label_invoice_rects(page_rect, cfg=CFG)
 
-    # Page 1: label (fixed size from config)
+    # Page(s): label
     label_doc = _render_clip_to_fixed_page(src, page_index, label_clip)
 
-    # Pages 2 & 3: invoice (fixed size + rotation from config)
-    inv_doc = _render_rotated_clip_to_fixed_page(src, page_index, invoice_clip, rotation_deg=CFG.rotate_invoice_deg)
+    # Page(s): invoice
+    inv_doc = _render_rotated_clip_to_fixed_page(
+        src, page_index, invoice_clip, rotation_deg=CFG.rotate_invoice_deg
+    )
 
     writer = PyPDF2.PdfWriter()
     label_reader = PyPDF2.PdfReader(io.BytesIO(label_doc.tobytes()))
-    writer.add_page(label_reader.pages[0])
-
     inv_reader = PyPDF2.PdfReader(io.BytesIO(inv_doc.tobytes()))
-    writer.add_page(inv_reader.pages[0])  # invoice page
-    writer.add_page(inv_reader.pages[0])  # duplicate invoice page
 
-    with open(out_pdf, 'wb') as f:
+    # Add label pages
+    for _ in range(max(0, int(labels))):
+        writer.add_page(label_reader.pages[0])
+
+    # Add invoice pages
+    for _ in range(max(0, int(invoices))):
+        writer.add_page(inv_reader.pages[0])
+
+    with open(out_pdf, "wb") as f:
         writer.write(f)
